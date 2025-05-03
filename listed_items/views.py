@@ -1,7 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from .models import ListedItem
+from .models import ListedItem,PropertyImage
 from .serializer import (
     ListedItemSerializer, 
     ListedItemCreateSerializer,
@@ -37,17 +37,18 @@ class ListedItemCreateView(generics.CreateAPIView):
         images = request.FILES.getlist('images')
         
         for i, image in enumerate(images):
-            is_main_value = False
-            if is_main and i < len(is_main):
-                is_main_value = is_main[i] in ['true', 'True', '1']
-                
+          
+                        
             PropertyImage.objects.create(
                 property=property_instance,
                 image=image,
-                is_main=is_main_value
+            
             )
         
         return Response(
-            ListedItemSerializer(property_instance).data,
+            ListedItemSerializer(
+                property_instance, 
+                context={'request': request}
+            ).data,
             status=status.HTTP_201_CREATED
         )

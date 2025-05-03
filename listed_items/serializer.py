@@ -2,14 +2,22 @@ from rest_framework import serializers
 from .models import ListedItem, PropertyImage
 
 class PropertyImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+    
     class Meta:
         model = PropertyImage
-        fields = ['id', 'image', 'is_main']
+        fields = ['id', 'image']
+    
+    def get_image(self, obj):
+        request = self.context.get('request')
+        if request and obj.image:
+            return request.build_absolute_uri(obj.image.url)
+        return None
 
 class PropertyImageCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = PropertyImage
-        fields = ['image', 'is_main']
+        fields = ['image', ]
 
 class ListedItemSerializer(serializers.ModelSerializer):
     images = PropertyImageSerializer(many=True, read_only=True)
