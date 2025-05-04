@@ -20,7 +20,7 @@ class PropertyImageCreateSerializer(serializers.ModelSerializer):
         fields = ['image', ]
 
 class ListedItemSerializer(serializers.ModelSerializer):
-    images = PropertyImageSerializer(many=True, read_only=True)
+    images = PropertyImageSerializer(source='propertyimage_set',many=True, read_only=True)
     
     class Meta:
         model = ListedItem
