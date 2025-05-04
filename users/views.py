@@ -4,7 +4,6 @@ from rest_framework.response import Response
 from .models import User
 from .serializer import UserSerializer
 from django.contrib.auth.hashers import check_password
-
 @api_view(['POST'])
 def sign_up_user(request):
     email = request.data.get('email')
@@ -36,7 +35,9 @@ def sign_up_user(request):
         return Response(
             {
                 "status": True,
-                "message": "User created successfully", "user": UserSerializer(user).data},
+                "message": "User created successfully", 
+                "user": UserSerializer(user, context={'request': request}).data
+            },
             status=status.HTTP_201_CREATED
         )
     
@@ -49,7 +50,6 @@ def sign_up_user(request):
         }, 
         status=status.HTTP_400_BAD_REQUEST
     )
-
 @api_view(['POST'])
 def log_in_user(request):
     email = request.data.get('email')
@@ -85,7 +85,7 @@ def log_in_user(request):
     return Response({
          "status": True,
         "message": "Login successful",
-        "user": UserSerializer(user).data
+        "user": UserSerializer(user, context={'request': request}).data
     }, status=status.HTTP_200_OK)
 
 
@@ -94,7 +94,7 @@ def get_user_by_id(request, token):
     try:
         # No need to manually parse or check the token format, as Django does that via the <uuid:token> path
         user = User.objects.get(id=token)
-        serializer = UserSerializer(user)
+        serializer = UserSerializer(user, context={'request': request})
         return Response(
             {
                  "status": True,

@@ -16,5 +16,7 @@ class User(models.Model):
     password = models.CharField(max_length=255)
     is_verified = models.BooleanField(default=False)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES)
+    profile_image = models.ImageField(upload_to='profile_images/', null=True, blank=True)
+    
     def __str__(self):
         return f"{self.name} ({self.email})"
