@@ -1,30 +1,37 @@
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
 from django.db import models
 from django.contrib.auth import get_user_model
 import json
 from .models import ChatRooms, Messages
+from .serializers import ChatRoomSerializer, MessageSerializer
+from rest_framework.response import Response
+from rest_framework import status
 from rest_framework.decorators import api_view
 
 @api_view(['POST'])
 def send_message(request):
     try:
-        data = json.loads(request.body)
+        data = request.data
         sender_id = data.get('sender_id')
         receiver_id = data.get('receiver_id')
         message_text = data.get('message')
         chatroom_id = data.get('chatroom_id', None)
+        
         # Validate required fields
         if not sender_id or not message_text:
-            return JsonResponse({'error': 'sender_id and message are required'}, status=400)
+            return Response(
+                {"status": False, "message": "sender_id and message are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
             
         # If chatroom_id is provided, use existing room
         if chatroom_id:
             try:
                 chatroom = ChatRooms.objects.get(id=chatroom_id)
             except ChatRooms.DoesNotExist:
-                return JsonResponse({'error': 'Chat room not found'}, status=404)
+                return Response(
+                    {"status": False, "message": "Chat room not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
         # If no chatroom_id but receiver_id, find or create a room
         elif receiver_id:
             # Check if a chat room already exists between these users
@@ -35,46 +42,75 @@ def send_message(request):
             
             # If no chat room exists, create one
             if not chatroom:
-                chatroom = ChatRooms.objects.create(
-                    user1=sender_id,
-                    user2=receiver_id,
-                    last_message=message_text
-                )
+                chatroom_data = {
+                    'user1': sender_id,
+                    'user2': receiver_id,
+                    'last_message': message_text
+                }
+                chatroom_serializer = ChatRoomSerializer(data=chatroom_data)
+                if chatroom_serializer.is_valid():
+                    chatroom = chatroom_serializer.save()
+                else:
+                    return Response(
+                        {"status": False, "message": "Validation error", "errors": chatroom_serializer.errors},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
         else:
-            return JsonResponse({'error': 'Either chatroom_id or receiver_id is required'}, status=400)
+            return Response(
+                {"status": False, "message": "Either chatroom_id or receiver_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Create the message
-        message = Messages.objects.create(
-            chatroom=chatroom,
-            sender=sender_id,
-            message=message_text
-        )
-        
-        # Update the chat room's last message
-        chatroom.last_message = message_text
-        chatroom.save()
-        
-        return JsonResponse({
-            'success': True,
-            'message_id': message.id,
-            'chatroom_id': chatroom.id,
-            'timestamp': message.timestamp.isoformat()
-        })
-        
+        message_data = {
+            'chatroom': chatroom.id,
+            'sender': sender_id,
+            'message': message_text
+        }
+        message_serializer = MessageSerializer(data=message_data)
+        if message_serializer.is_valid():
+            message = message_serializer.save()
+            
+            # Update the chat room's last message
+            chatroom.last_message = message_text
+            chatroom.save()
+            
+            return Response({
+                "status": True,
+                "message": "Message sent successfully",
+                "data": {
+                    'message_id': message.id,
+                    'chatroom_id': chatroom.id,
+                    'timestamp': message.timestamp.isoformat()
+                }
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response(
+                {"status": False, "message": "Validation error", "errors": message_serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return Response(
+            {"status": False, "message": f"An error occurred: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['GET'])
 def get_chat_rooms(request):
     try:
-        user_id = request.GET.get('user_id')
+        user_id = request.query_params.get('user_id')
+        
         if not user_id:
-            return JsonResponse({'error': 'user_id is required'}, status=400)
+            return Response(
+                {"status": False, "message": "user_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
             
         # Get all chat rooms for this user
         chat_rooms = ChatRooms.objects.filter(
             models.Q(user1=user_id) | models.Q(user2=user_id)
-        ).order_by('-updated_at')  # Assuming you have an updated_at field
+        ).order_by('-updated_at')
         
         User = get_user_model()
         result = []
@@ -98,7 +134,7 @@ def get_chat_rooms(request):
                 room_data = {
                     'chatroom_id': room.id,
                     'other_user_id': other_user_id,
-                    'other_user_name': other_user.username,  # Adjust as needed
+                    'other_user_name': other_user.username,
                     'other_user_profile_pic': profile_pic,
                     'last_message': room.last_message,
                     'unread_count': Messages.objects.filter(
@@ -113,26 +149,36 @@ def get_chat_rooms(request):
                 # Skip this room if the other user doesn't exist
                 continue
         
-        return JsonResponse({'chat_rooms': result})
+        return Response(
+            {"status": True, "message": "Chat rooms retrieved successfully", "chat_rooms": result},
+            status=status.HTTP_200_OK
+        )
         
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-
+        return Response(
+            {"status": False, "message": f"An error occurred: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['GET'])
 def get_messages(request):
     try:
-        room_id = request.GET.get('room_id')
+        room_id = request.query_params.get('room_id')
         
         if not room_id:
-            return JsonResponse({'error': 'room_id is required'}, status=400)
+            return Response(
+                {"status": False, "message": "room_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
             
         # Verify the room exists
         try:
             chatroom = ChatRooms.objects.get(id=room_id)
         except ChatRooms.DoesNotExist:
-            return JsonResponse({'error': 'Chat room not found'}, status=404)
+            return Response(
+                {"status": False, "message": "Chat room not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
         
         # Get all messages for this room
         messages = Messages.objects.filter(chatroom=chatroom).order_by('timestamp')
@@ -140,29 +186,23 @@ def get_messages(request):
         # Mark all unread messages as read if there's an is_read field
         if hasattr(Messages, 'is_read'):
             # Assuming we have a user_id parameter to know which messages to mark as read
-            user_id = request.GET.get('user_id')
+            user_id = request.query_params.get('user_id')
             if user_id:
-                unread_messages = messages.filter(sender__ne=user_id, is_read=False)
+                # Use field lookup with 'exact' instead of 'ne'
+                unread_messages = messages.exclude(sender=user_id).filter(is_read=False)
                 unread_messages.update(is_read=True)
         
-        # Format the messages
-        result = []
-        for message in messages:
-            msg_data = {
-                'id': message.id,
-                'sender_id': message.sender,
-                'message': message.message,
-                'timestamp': message.timestamp.isoformat()
-            }
-            if hasattr(message, 'is_read'):
-                msg_data['is_read'] = message.is_read
-            
-            result.append(msg_data)
+        # Serialize the messages
+        serializer = MessageSerializer(messages, many=True)
         
-        return JsonResponse({
-            'chatroom_id': room_id,
-            'messages': result
-        })
+        return Response({
+            "status": True, "message": "Messages retrieved successfully",
+            "chatroom_id": room_id,
+            "messages": serializer.data
+        }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return Response(
+            {"status": False, "message": f"An error occurred: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
