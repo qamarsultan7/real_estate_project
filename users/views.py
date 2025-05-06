@@ -3,6 +3,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import User
 from .serializer import UserSerializer
+from reviews.models import Review
+from listed_items.models import ListedItem
+from chat.models import ChatRooms, Messages
 from django.contrib.auth.hashers import check_password
 
 @api_view(['POST'])
@@ -108,4 +111,55 @@ def get_user_by_id(request, token):
                  "status": False,
                 "message": "User not found"}, 
             status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['DELETE'])
+def delete_user(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+        review= Review.objects.filter(review_to=user_id)
+        listed_items = ListedItem.objects.filter(agent_id=user_id)
+        user.delete()
+        review.delete()
+        listed_items.delete()
+        return Response(
+            {
+                 "status": True,
+                "message": "User deleted successfully"}, 
+            status=status.HTTP_204_NO_CONTENT
+        )
+    except User.DoesNotExist:
+        return Response(
+            {
+                 "status": False,
+                "message": "User not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+
+@api_view(['DELETE'])
+def delete_all_users(request):
+    try:
+        users = User.objects.all()
+        reviews = Review.objects.all()
+        listed_items = ListedItem.objects.all()
+        chat_rooms = ChatRooms.objects.all()
+        messages = Messages.objects.all()
+        chat_rooms.delete()
+        messages.delete()
+        users.delete()
+        reviews.delete()
+        listed_items.delete()
+        return Response(
+            {
+                 "status": True,
+                "message": "All users deleted successfully"}, 
+            status=status.HTTP_204_NO_CONTENT
+        )
+    except Exception as e:
+        return Response(
+            {
+                 "status": False,
+                "message": str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

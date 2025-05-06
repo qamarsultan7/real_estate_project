@@ -2,6 +2,7 @@ from django.db import models
 
 # Create your models here.
 class ListedItem(models.Model):
+    agent_id= models.UUIDField(null=True, blank=False)
     name = models.CharField(max_length=255)
     description = models.TextField()
     location = models.CharField(max_length=255)

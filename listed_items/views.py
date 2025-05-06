@@ -2,10 +2,10 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from .models import ListedItem,PropertyImage
+import uuid 
 from .serializer import (
     ListedItemSerializer, 
     ListedItemCreateSerializer,
-    PropertyImageSerializer
 )
 
 class ListedItemListView(generics.ListAPIView):
@@ -17,8 +17,14 @@ class ListedItemCreateView(generics.CreateAPIView):
     parser_classes = (MultiPartParser, FormParser)
     
     def post(self, request, *args, **kwargs):
+        print(f"Raw agent_id from request: {request.data.get('agent_id')}")
+        print(f"Type of agent_id: {type(request.data.get('agent_id'))}")
+        agent_id_raw = request.data.get('agent_id')
+        agent_id = uuid.UUID(agent_id_raw) if agent_id_raw else None
+        print(f"Converted agent_id: {agent_id}")
         property_data = {
             'name': request.data.get('name'),
+            'agent_id':agent_id,
             'description': request.data.get('description'),
             'location': request.data.get('location'),
             'price': request.data.get('price'),
