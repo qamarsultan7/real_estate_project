@@ -3,8 +3,8 @@ from django.db import models
 # Create your models here.
 class ChatRooms(models.Model):
     id=models.AutoField(primary_key=True)
-    user1=models.CharField(max_length=255)
-    user2=models.CharField(max_length=255)
+    user1=models.UUIDField()
+    user2=models.UUIDField()
     last_message=models.TextField()
     last_message_time=models.DateTimeField(auto_now=True)
 
@@ -14,7 +14,7 @@ class ChatRooms(models.Model):
 class Messages(models.Model):
     id =models.AutoField(primary_key=True)
     chatroom=models.ForeignKey(ChatRooms, on_delete=models.CASCADE, related_name='messages')
-    sender=models.CharField(max_length=255)
+    sender=models.UUIDField()
     message=models.TextField()
     timestamp=models.DateTimeField(auto_now_add=True)
 

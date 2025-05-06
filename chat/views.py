@@ -1,6 +1,5 @@
-from django.db import models
-from django.contrib.auth import get_user_model
-import json
+from django.db.models import Q
+from users.models import User
 from .models import ChatRooms, Messages
 from .serializers import ChatRoomSerializer, MessageSerializer
 from rest_framework.response import Response
@@ -22,6 +21,33 @@ def send_message(request):
                 {"status": False, "message": "sender_id and message are required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # Validate that both users exist if receiver_id is provided
+        if receiver_id:
+            try:
+                sender = User.objects.get(id=sender_id)
+            except User.DoesNotExist:
+                return Response(
+                    {"status": False, "message": "Sender user does not exist"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+                
+            try:
+                receiver = User.objects.get(id=receiver_id)
+            except User.DoesNotExist:
+                return Response(
+                    {"status": False, "message": "Receiver user does not exist"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        # If only chatroom_id is provided, validate just the sender
+        elif chatroom_id:
+            try:
+                sender = User.objects.get(id=sender_id)
+            except User.DoesNotExist:
+                return Response(
+                    {"status": False, "message": "Sender user does not exist"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
             
         # If chatroom_id is provided, use existing room
         if chatroom_id:
@@ -36,8 +62,8 @@ def send_message(request):
         elif receiver_id:
             # Check if a chat room already exists between these users
             chatroom = ChatRooms.objects.filter(
-                models.Q(user1=sender_id, user2=receiver_id) | 
-                models.Q(user1=receiver_id, user2=sender_id)
+                Q(user1=sender_id, user2=receiver_id) | 
+                Q(user1=receiver_id, user2=sender_id)
             ).first()
             
             # If no chat room exists, create one
@@ -97,9 +123,11 @@ def send_message(request):
         )
 
 @api_view(['GET'])
-def get_chat_rooms(request):
+def get_chat_rooms(request, user_id=None):
     try:
-        user_id = request.query_params.get('user_id')
+        # Get user_id from path parameter first, then fall back to query parameter
+        if not user_id:
+            user_id = request.query_params.get('user_id')
         
         if not user_id:
             return Response(
@@ -109,11 +137,21 @@ def get_chat_rooms(request):
             
         # Get all chat rooms for this user
         chat_rooms = ChatRooms.objects.filter(
-            models.Q(user1=user_id) | models.Q(user2=user_id)
-        ).order_by('-updated_at')
+            Q(user1=user_id) | Q(user2=user_id)
+        )
         
-        User = get_user_model()
+        # Try to order by last_message_time if it exists
+        try:
+            chat_rooms = chat_rooms.order_by('-last_message_time')
+        except:
+            # If the field doesn't exist, just use the default ordering
+            pass
+        
+        # User model for looking up other chat participants
         result = []
+        
+        # Get the base URL from the request
+        base_url = request.build_absolute_uri('/').rstrip('/')
         
         for room in chat_rooms:
             # Determine which user is the other person in the chat
@@ -125,16 +163,19 @@ def get_chat_rooms(request):
                 # Get profile picture URL - adjust field name as per your User model
                 profile_pic = None
                 if hasattr(other_user, 'profile_image'):
-                    profile_pic = other_user.profile_pic.url if other_user.profile_pic else None
+                    if other_user.profile_image:
+                        profile_pic = base_url + other_user.profile_image.url
                 elif hasattr(other_user, 'avatar'):
-                    profile_pic = other_user.avatar.url if other_user.avatar else None
+                    if other_user.avatar:
+                        profile_pic = base_url + other_user.avatar.url
                 elif hasattr(other_user, 'image'):
-                    profile_pic = other_user.image.url if other_user.image else None
+                    if other_user.image:
+                        profile_pic = base_url + other_user.image.url
                 
                 room_data = {
                     'chatroom_id': room.id,
                     'other_user_id': other_user_id,
-                    'other_user_name': other_user.username,
+                    'other_user_name': other_user.name,
                     'other_user_profile_pic': profile_pic,
                     'last_message': room.last_message,
                     'unread_count': Messages.objects.filter(
@@ -160,11 +201,13 @@ def get_chat_rooms(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
 @api_view(['GET'])
-def get_messages(request):
+def get_messages(request, room_id=None):
     try:
-        room_id = request.query_params.get('room_id')
-        
+        # Get room_id from path parameter first, then fall back to query parameter
+        if not room_id:
+            room_id = request.query_params.get('room_id')
         if not room_id:
             return Response(
                 {"status": False, "message": "room_id is required"},
