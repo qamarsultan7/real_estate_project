@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from .models import User
 from .serializer import UserSerializer
 from django.contrib.auth.hashers import check_password
+
 @api_view(['POST'])
 def sign_up_user(request):
     email = request.data.get('email')
